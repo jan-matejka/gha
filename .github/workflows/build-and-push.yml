@@ -20,6 +20,10 @@ on:
         description: 'Rebuild without pulling from registry cache (still write to it)'
         type: boolean
         default: false
+      build-args:
+        description: 'Build arguments, newline-separated KEY=VALUE pairs, passed to build-push-action as build-args'
+        type: string
+        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -51,6 +55,19 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
 
+      - name: Compute build args
+        id: build_args
+        run: |
+          {
+            ctime=$(grep '^org.opencontainers.image.created=' <<< "${{ steps.meta.outputs.labels }}" | cut -d= -f2-)
+            echo "args<<EOF"
+            echo "IMAGE_BUILD_CTIME=$ctime"
+            echo "IMAGE_BUILD_COMMIT=${{ github.sha }}"
+            echo "IMAGE_BUILD_REF=${{ github.ref }}"
+            echo "${{ inputs['build-args'] }}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push image
         id: build
         uses: docker/build-push-action@v7
@@ -60,6 +77,7 @@ jobs:
           push: true
           pull: true
           no-cache: ${{ inputs.no_cache }}
+          build-args: ${{ steps.build_args.outputs.args }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image_name }}:buildcache
