@@ -64,6 +64,7 @@ jobs:
             echo "IMAGE_BUILD_CTIME=$ctime"
             echo "IMAGE_BUILD_COMMIT=${{ github.sha }}"
             echo "IMAGE_BUILD_REF=${{ github.ref }}"
+            echo "IMAGE_BUILD_BY=GHA"
             echo "${{ inputs['build-args'] }}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
