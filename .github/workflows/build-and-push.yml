@@ -1,0 +1,78 @@
+name: Build and push image
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: 'Image name, e.g. "debian" -> ghcr.io/<owner>/debian'
+        type: string
+        required: true
+      context:
+        type: string
+        default: '{{defaultContext}}'
+      containerfile:
+        type: string
+        default: './Containerfile'
+      registry:
+        type: string
+        default: 'ghcr.io'
+      no_cache:
+        description: 'Rebuild without pulling from registry cache (still write to it)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image_name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+
+      - name: Log in to ${{ inputs.registry }}
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.containerfile }}
+          push: true
+          pull: true
+          no-cache: ${{ inputs.no_cache }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image_name }}:buildcache
+          cache-to: type=registry,ref=${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image_name }}:buildcache,mode=max
+
+      - name: Image summary
+        run: |
+          {
+            echo "### Pushed image"
+            echo
+            while IFS= read -r tag; do
+              [ -n "$tag" ] && echo "image: \`$tag\`"
+            done <<< "${{ steps.meta.outputs.tags }}"
+            echo
+            echo "digest: \`${{ steps.build.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
